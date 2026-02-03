@@ -1,75 +1,59 @@
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-from sklearn.tree import DecisionTreeClassifier
+from sklearn import metrics
 import joblib
 
-# Load the dataset
-df = pd.read_csv('data/loan.csv')
-# Drop the Loan_ID column as it is not useful for analysis
-df.drop("Loan_ID", axis=1, inplace=True)
+
+# Load dataset
+data = pd.read_csv('data/loan.csv')
+
+# Drop Loan_ID column
+data.drop(['Loan_ID'], axis=1, inplace=True)
+
+# Encode categorical variables
+label_encoder = preprocessing.LabelEncoder()
+obj = (data.dtypes == 'object')
+for col in list(obj[obj].index):
+    data[col] = label_encoder.fit_transform(data[col])
+
 # Handle missing values
-# Fill categorical columns with mode and numerical columns with median
-cat_cols = ['Gender', 'Married','Dependents', 'Self_Employed']
-for col in cat_cols:
-    df[col].fillna(df[col].mode()[0], inplace=True)
-#why median? because it is less affected by outliers
-num_cols = ['LoanAmount', 'Loan_Amount_Term', 'Credit_History']
-for col in num_cols:
-    df[col].fillna(df[col].median(), inplace=True)
-# print(df.head())
-# print(df.isnull().sum())
-df['Loan_Status'] = df['Loan_Status'].map({'Y': 1, 'N': 0})
+for col in data.columns:
+    data[col] = data[col].fillna(data[col].median())
 
-df_encoded = pd.get_dummies(df, drop_first=True)
-X = df_encoded.drop('Loan_Status', axis=1)
-y = df_encoded['Loan_Status']
-# print("Features shape:", X.shape)
-# print("Target shape:", y.shape)
-# print("Features columns:", X.columns.tolist())
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+# Split features and target
+X = data.drop(['Loan_Status'], axis=1)
+Y = data['Loan_Status']
+
+# Train-test split
+X_train, X_test, Y_train, Y_test = train_test_split(
+    X, Y, test_size=0.2, random_state=1
 )
 
-#print(X_train.shape, X_test.shape)
-# model = LogisticRegression(max_iter=1000 , class_weight='balanced')
-# model.fit(X_train, y_train)
-model = DecisionTreeClassifier(max_depth=4, random_state=42)
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-print("\nClassification Report:\n", classification_report(y_test, y_pred))
+# Logistic Regression model
+lr = LogisticRegression()
 
-df_test = pd.read_csv('data/test.csv')
-df_test.drop("Loan_ID", axis=1, inplace=True)
-# Replace spaces with NaN
-df_test.replace(" ", pd.NA, inplace=True)
+# -------- Training Performance --------
+lr.fit(X_train, Y_train)
+Y_train_pred = lr.predict(X_train)
 
-# Fill categorical missing values
-for col in ['Gender', 'Married', 'Dependents', 'Self_Employed']:
-    df_test[col] = df_test[col].fillna(df_test[col].mode()[0])
+print("Training Accuracy =", 100 * metrics.accuracy_score(Y_train, Y_train_pred))
+print("Training Confusion Matrix:\n", metrics.confusion_matrix(Y_train, Y_train_pred))
+print("Training Classification Report:\n",
+      metrics.classification_report(Y_train, Y_train_pred))
 
-# Fill numerical missing values
-for col in ['LoanAmount', 'Loan_Amount_Term', 'Credit_History']:
-    df_test[col] = df_test[col].fillna(df_test[col].median())
+# -------- Testing Performance --------
+Y_test_pred = lr.predict(X_test)
 
-df_test_encoded = pd.get_dummies(df_test, drop_first=True)
+print("Testing Accuracy =", 100 * metrics.accuracy_score(Y_test, Y_test_pred))
+print("Testing Confusion Matrix:\n", metrics.confusion_matrix(Y_test, Y_test_pred))
+print("Testing Classification Report:\n",
+      metrics.classification_report(Y_test, Y_test_pred))
 
-# Align columns with training data
-df_test_encoded = df_test_encoded.reindex(
-    columns=X.columns,
-    fill_value=0
-)
 
-test_predictions = model.predict(df_test_encoded)
-
-df_test['Predicted_Loan_Status'] = ['Y' if x == 1 else 'N' for x in test_predictions]
-df_test[['Predicted_Loan_Status']].to_csv(
-    'data/test_predictions.csv',
-    index=False
-)
-
-joblib.dump(model, "model.pkl")
+joblib.dump(lr, 'model.pkl')
